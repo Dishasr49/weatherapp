@@ -56,7 +56,7 @@
       resultDiv.innerHTML = '';
       try {
         const res = await fetch(
-          `https://openweathermap.org/api?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric`
+          `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric`
         );
         const data = await res.json();
         if (data.cod !== 200) {
