@@ -4,36 +4,18 @@
   <meta charset="UTF-8">
   <title>Weather App</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Bootstrap CDN (optional) -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-<style>
-  body {
-    background: #f8f9fa;
-  }
-
-  .weather-card {
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    padding: 24px;
-    background: #fff;
-  }
-
-  .btn-primary {
-    background-color: #0077ff;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    padding: 10px 24px;
-  }
-
-  .btn-primary:hover {
-    background-color: #005fcc;
-  }
-</style>
+  <style>
+    body { background: #f8f9fa; }
+    .weather-card { border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 24px; background: #fff; }
+    .forecast-day { text-align: center; border-radius: 12px; background: #e9ecef; margin: 8px; padding: 12px; }
+    .weather-icon { width: 48px; height: 48px; }
+    .forecast-row { display: flex; flex-wrap: wrap; justify-content: space-between; }
+  </style>
 </head>
 <body>
   <div class="container">
-    <div class="weather-card card shadow">
+    <div class="weather-card card shadow mt-5">
       <div class="card-body">
         <h2 class="card-title text-center mb-4">Weather App</h2>
         <form id="weatherForm" class="mb-3">
@@ -42,38 +24,99 @@
             <button type="submit" class="btn btn-primary">Get Weather</button>
           </div>
         </form>
-        <div id="weatherResult"></div>
+        <div id="errorMsg"></div>
+        <div id="currentWeather" class="mb-4"></div>
+        <h5 id="forecastTitle" class="mb-3" style="display:none;">5-Day Forecast</h5>
+        <div id="forecast" class="forecast-row"></div>
       </div>
     </div>
   </div>
   <script>
     const apiKey = "53f5517135545f9b666c4fa860ef69cd"; // Replace with your OpenWeatherMap API key
 
+    // Autofocus the city input on page load
+    window.onload = function() {
+      document.getElementById('cityInput').focus();
+    };
+
     document.getElementById('weatherForm').addEventListener('submit', async function(e) {
       e.preventDefault();
-      const city = document.getElementById('cityInput').value;
-      const resultDiv = document.getElementById('weatherResult');
-      resultDiv.innerHTML = '';
+      const city = document.getElementById('cityInput').value.trim();
+      document.getElementById('errorMsg').innerHTML = '';
+      document.getElementById('currentWeather').innerHTML = '';
+      document.getElementById('forecast').innerHTML = '';
+      document.getElementById('forecastTitle').style.display = 'none';
+
+      if (!city) {
+        document.getElementById('errorMsg').innerHTML = `<div class="alert alert-warning">Please enter a city name.</div>`;
+        return;
+      }
+
       try {
-        const res = await fetch(
+        // Fetch current weather
+        const weatherRes = await fetch(
           `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric`
         );
-        const data = await res.json();
-        if (data.cod !== 200) {
-          resultDiv.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+        const weatherData = await weatherRes.json();
+        if (weatherData.cod !== 200) {
+          document.getElementById('errorMsg').innerHTML = `<div class="alert alert-danger">${weatherData.message}</div>`;
           return;
         }
-        resultDiv.innerHTML = `
-          <h5>${data.name}, ${data.sys.country}</h5>
-          <p><strong>Temperature:</strong> ${data.main.temp}°C</p>
-          <p><strong>Description:</strong> ${data.weather[0].description}</p>
-          <p><strong>Humidity:</strong> ${data.main.humidity}%</p>
-          <p><strong>Wind Speed:</strong> ${data.wind.speed} m/s</p>
+        // Display current weather
+        document.getElementById('currentWeather').innerHTML = `
+          <div class="d-flex align-items-center mb-3">
+            <img class="weather-icon me-3" src="https://openweathermap.org/img/wn/${weatherData.weather[0].icon}@2x.png" alt="icon">
+            <div>
+              <h5 class="mb-0">${weatherData.name}, ${weatherData.sys.country}</h5>
+              <div>${weatherData.weather[0].description}</div>
+            </div>
+          </div>
+          <p><strong>Temperature:</strong> ${weatherData.main.temp}°C</p>
+          <p><strong>Humidity:</strong> ${weatherData.main.humidity}%</p>
+          <p><strong>Wind Speed:</strong> ${weatherData.wind.speed} m/s</p>
+          <p><strong>Feels Like:</strong> ${weatherData.main.feels_like}°C</p>
         `;
+
+        // Fetch 5-day forecast
+        const forecastRes = await fetch(
+          `https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric`
+        );
+        const forecastData = await forecastRes.json();
+        if (forecastData.cod !== "200") {
+          document.getElementById('errorMsg').innerHTML = `<div class="alert alert-danger">Could not fetch forecast.</div>`;
+          return;
+        }
+
+        // Process forecast: group by day, pick the midday forecast for each day
+        const forecastByDay = {};
+        forecastData.list.forEach(item => {
+          const date = item.dt_txt.split(' ')[0];
+          if (!forecastByDay[date]) forecastByDay[date] = [];
+          forecastByDay[date].push(item);
+        });
+
+        // Get today and next 4 days
+        const days = Object.keys(forecastByDay).slice(1, 6); // skip today
+        let forecastHTML = '';
+        days.forEach(date => {
+          // Pick the forecast closest to 12:00
+          const midday = forecastByDay[date].reduce((prev, curr) => {
+            return Math.abs(new Date(curr.dt_txt).getHours() - 12) < Math.abs(new Date(prev.dt_txt).getHours() - 12) ? curr : prev;
+          });
+          forecastHTML += `
+            <div class="forecast-day col">
+              <div>${new Date(date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+              <img class="weather-icon" src="https://openweathermap.org/img/wn/${midday.weather[0].icon}@2x.png" alt="icon">
+              <div>${midday.weather[0].description}</div>
+              <div><strong>${midday.main.temp}°C</strong></div>
+              <div>Humidity: ${midday.main.humidity}%</div>
+            </div>
+          `;
+        });
+        document.getElementById('forecast').innerHTML = forecastHTML;
+        document.getElementById('forecastTitle').style.display = 'block';
       } catch (err) {
-        resultDiv.innerHTML = `<div class="alert alert-danger">
-            Failed to fetch weather.
-          </div>`;
+        document.getElementById('errorMsg').innerHTML = `<div class="alert alert-danger">Failed to fetch weather.</div>`;
       }
     });
   </script>
